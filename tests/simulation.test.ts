@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { approach, baseline, controlTarget, experimentMetrics, pointsForAttempt } from '../src/simulation.ts';
-import { experiments, lessons, organs, questions } from '../src/data.ts';
+import { experiments, lessons, organs, questions, glucoseFeedbackChain } from '../src/data.ts';
 
 test('Покой совпадает с исходным состоянием; увеличение воздействия усиливает ответ', () => {
   assert.deepEqual(controlTarget(0, 0), baseline);
@@ -45,8 +45,33 @@ test('Пять заданий; максимум 500; очки за повтор�
   assert.deepEqual([0, 1, 2, 3].map(pointsForAttempt), [100, 50, 0, 0]);
   for (const q of questions) assert.ok(q.correct >= 0 && q.correct < q.options.length);
 });
-test('Сценарий урока длится 180 секунд, все ссылки на органы корректны', () => {
-  assert.equal(lessons.reduce((sum, l) => sum + l.seconds, 0), 180);
+test('Семь этапов урока укладываются в 5–7 минут, все ссылки на органы корректны', () => {
+  assert.equal(lessons.length, 7);
+  const duration = lessons.reduce((sum, l) => sum + l.seconds, 0);
+  assert.ok(duration >= 300 && duration <= 420);
+  assert.equal(duration, 360);
   assert.equal(organs.length, 10);
   for (const entry of [...lessons, ...questions, ...experiments.flatMap(e => e.steps)]) assert.ok(organs.some(o => o.id === entry.organ));
+});
+
+test('Игра закрепляет пять вопросов урока, подсказки и ссылки ведут к соответствующим темам', () => {
+  assert.equal(lessons.flatMap(step => step.review ?? []).length, questions.length);
+  for (const question of questions) {
+    assert.ok(question.lessonIndex >= 0 && question.lessonIndex < lessons.length);
+    assert.ok(question.hint.length > 0 && question.explanation.length > 0);
+    assert.equal(question.options.length, new Set(question.options).size);
+  }
+  assert.match(questions[0].options[questions[0].correct], /Совместное управление/);
+  assert.match(questions[1].options[questions[1].correct], /Нервная/);
+  assert.match(questions[2].options[questions[2].correct], /рецепторами/);
+  assert.equal(questions[3].options[questions[3].correct], 'Адреналин');
+  assert.match(questions[4].options[questions[4].correct], /гомеостаз/);
+});
+
+test('Гормоны урока связаны с нужными железами; опыт с глюкозой сохраняет собственную цепочку', () => {
+  const hormones = lessons.flatMap(step => step.hormones ?? []);
+  assert.deepEqual(hormones.map(h => [h.name, h.organ]), [
+    ['Адреналин', 'adrenal'], ['Инсулин', 'pancreas'], ['Гормон роста', 'pituitary'], ['Тироксин', 'thyroid'],
+  ]);
+  assert.deepEqual(glucoseFeedbackChain, ['Глюкоза ↑', 'Инсулин ↑', 'Поглощение и запасание', 'Глюкоза ↓', 'Стимул к секреции ↓']);
 });
